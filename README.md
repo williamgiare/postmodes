@@ -4,9 +4,9 @@
 
 The package is built around one scientific question:
 
-> given two posterior distributions on the same physical parameter space, which parameter combinations are preserved, which are degraded or tightened, and how does the posterior geometry change?
+**given two posterior distributions on the same physical parameter space, which parameter combinations are preserved, which are degraded or tightened, and how does the posterior geometry change?**
 
-It is especially aimed at covariance- and chain-based workflows in cosmology, with direct support for MCMC covariance matrices and MCMC chains.
+It is especially aimed at covariance- and chain-based analyses in cosmology, with direct support for MCMC chains and covariance matrices.
 
 ## What The Package Does
 
