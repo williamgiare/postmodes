@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from getdist import MCSamples
 
-from posterior_eigenmodes import (
+from postmodes import (
     add_all_mode_derived_parameters,
     add_mode_derived_parameter,
     analyze_covariance,
@@ -20,17 +20,17 @@ from posterior_eigenmodes import (
     top_correlation_changes,
     top_eigenvector_alignments,
 )
-from posterior_eigenmodes.api import (
+from postmodes.api import (
     compare_MCMC_chains,
     compare_covariances,
     compare_covmats,
     compare_samples,
 )
-from posterior_eigenmodes.geometry import select_parameter_subspace
-from posterior_eigenmodes.interpretation import format_comparison_report
-from posterior_eigenmodes.io import load_covmat
-from posterior_eigenmodes.plotting import project_samples_onto_modes
-from posterior_eigenmodes.stats import weighted_covariance
+from postmodes.geometry import select_parameter_subspace
+from postmodes.interpretation import format_comparison_report
+from postmodes.io import load_covmat
+from postmodes.plotting import project_samples_onto_modes
+from postmodes.stats import weighted_covariance
 
 
 def test_select_parameter_subspace_respects_requested_order() -> None:

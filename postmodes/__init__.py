@@ -1,4 +1,4 @@
-"""Core tools for posterior covariance eigenmode analysis."""
+"""PostModes: eigenmode analysis of posterior geometry."""
 
 from .api import eigenmodes
 from .interpretation import (

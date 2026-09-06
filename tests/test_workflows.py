@@ -5,8 +5,8 @@ import sys
 import numpy as np
 import pytest
 
-from posterior_eigenmodes import eigenmodes, eigenmode_report, bootstrap_stability, analyze_covariances, rotation_subspace_angles
-from posterior_eigenmodes import api
+from postmodes import eigenmodes, eigenmode_report, bootstrap_stability, analyze_covariances, rotation_subspace_angles
+from postmodes import api
 
 
 def write_chain(root, names, values, weights):
@@ -32,7 +32,7 @@ def test_chain_auto_selection_and_single_load(tmp_path, monkeypatch):
 
 
 def test_default_burnin_and_retained_row_weights(tmp_path):
-    from posterior_eigenmodes.stats import weighted_mean, weighted_covariance
+    from postmodes.stats import weighted_mean, weighted_covariance
     rng = np.random.default_rng(23)
     arrays = [rng.normal(size=(100, 2)), rng.normal(size=(100, 2)) + 2]
     weights = np.arange(1., 101.)
@@ -42,7 +42,7 @@ def test_default_burnin_and_retained_row_weights(tmp_path):
     np.testing.assert_allclose(result.reference_mean, weighted_mean(arrays[0][30:], weights[30:]))
     np.testing.assert_allclose(result.alternative_mean, weighted_mean(arrays[1][30:], weights[30:]))
     np.testing.assert_allclose(result.reference_covariance, weighted_covariance(arrays[0][30:], weights[30:]))
-    proc = subprocess.run([sys.executable, '-m', 'posterior_eigenmodes', str(tmp_path/'A'), str(tmp_path/'B'), '--json'], capture_output=True, text=True)
+    proc = subprocess.run([sys.executable, '-m', 'postmodes', str(tmp_path/'A'), str(tmp_path/'B'), '--json'], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     np.testing.assert_allclose(json.loads(proc.stdout)['reference_mean'], result.reference_mean)
 
@@ -57,7 +57,7 @@ def test_covmat_consistency_and_cli(tmp_path):
         r = eigenmodes(tmp_path/'A', tmp_path/'B', covmat_a=tmp_path/'A.covmat', covmat_b=tmp_path/'B.covmat', check_covariances=True)
     np.testing.assert_array_equal(r.reference_covariance, np.eye(2)*20)
     assert len(r.input_covariance_diagnostics) == 2
-    proc = subprocess.run([sys.executable, '-m', 'posterior_eigenmodes', '--covmat-a', str(tmp_path/'A.covmat'), '--covmat-b', str(tmp_path/'B.covmat'), '--json'], capture_output=True, text=True)
+    proc = subprocess.run([sys.executable, '-m', 'postmodes', '--covmat-a', str(tmp_path/'A.covmat'), '--covmat-b', str(tmp_path/'B.covmat'), '--json'], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     data = json.loads(proc.stdout)
     assert data['alpha'] == pytest.approx(1)
@@ -84,7 +84,7 @@ def test_bootstrap_reproducible_and_subspace_invariant():
 
 def test_bootstrap_getdist_separate_chains_keep_weights():
     from getdist import MCSamples
-    from posterior_eigenmodes.api import compare_samples
+    from postmodes.api import compare_samples
     rng = np.random.default_rng(32)
     x = [rng.normal(size=(100, 2)), rng.normal(size=(100, 2))]
     weights = [rng.integers(1, 30, 100), rng.integers(1, 30, 100)]

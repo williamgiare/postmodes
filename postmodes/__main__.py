@@ -1,4 +1,4 @@
-"""Command-line posterior comparison: python -m posterior_eigenmodes."""
+"""Command-line posterior comparison: python -m postmodes."""
 
 import argparse
 import json

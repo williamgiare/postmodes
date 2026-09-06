@@ -3,10 +3,10 @@ import pytest
 from scipy.linalg import eigh
 from getdist import MCSamples
 
-from posterior_eigenmodes import analyze_covariances, get_mode_samples, eigenmode_report
-from posterior_eigenmodes.api import compare_samples
-from posterior_eigenmodes.stats import weighted_covariance, weighted_mean
-from posterior_eigenmodes.plotting import plot_mode_distributions, add_all_mode_derived_parameters
+from postmodes import analyze_covariances, get_mode_samples, eigenmode_report
+from postmodes.api import compare_samples
+from postmodes.stats import weighted_covariance, weighted_mean
+from postmodes.plotting import plot_mode_distributions, add_all_mode_derived_parameters
 
 
 def matrices(seed=4):
@@ -59,7 +59,7 @@ def test_full_mean_reordering_and_explicit_selected_means():
 
 
 def test_single_pca_uses_relative_not_absolute_floor():
-    from posterior_eigenmodes import analyze_covariance
+    from postmodes import analyze_covariance
     A = np.diag([1e-24, 4e-24])
     result = analyze_covariance(A, ['x', 'y'], eigenvalue_floor=1e-14)
     np.testing.assert_allclose(result.eigenvalues, [4e-24, 1e-24], rtol=1e-12, atol=0)

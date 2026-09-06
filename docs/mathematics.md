@@ -1,6 +1,6 @@
 # Mathematics
 
-This page summarizes the mathematical backbone of `posterior-eigenmodes`.
+This page summarizes the mathematical backbone of `postmodes`.
 
 The package compares two posterior distributions defined on the same physical parameter space:
 
@@ -258,4 +258,4 @@ Putting everything together, the package measures:
 - generalized mode directions,
 - correlation-structure changes in the original parameter basis.
 
-This is the mathematical core of `posterior-eigenmodes`.
+This is the mathematical core of `postmodes`.

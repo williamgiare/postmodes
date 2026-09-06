@@ -1,6 +1,6 @@
-# Overview
+# PostModes Documentation
 
-`posterior-eigenmodes` is a small Python package for comparing posterior constraints through the geometry of their covariance matrices.
+`postmodes` is a small Python package for comparing posterior constraints through the geometry of their covariance matrices.
 
 The package is designed for the following scientific question:
 

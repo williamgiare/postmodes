@@ -1,6 +1,8 @@
-# Posterior Eigenmodes
+# PostModes
 
-`posterior-eigenmodes` is a Python package for comparing posterior constraints through the geometry of their covariance matrices.
+**Eigenmode analysis of posterior geometry.**
+
+`postmodes` is a Python package for comparing posterior constraints through the geometry of their covariance matrices.
 
 The package is built around one scientific question:
 
@@ -10,7 +12,7 @@ It is especially aimed at covariance- and chain-based analyses in cosmology, wit
 
 ## What The Package Does
 
-`posterior-eigenmodes` compares a reference posterior `A` and an alternative posterior `B` by combining:
+`postmodes` compares a reference posterior `A` and an alternative posterior `B` by combining:
 
 - PCA of `A`
 - PCA of `B`
@@ -43,7 +45,7 @@ pip install -e .
 Two chain roots are enough (30% burn-in by default):
 
 ```python
-from posterior_eigenmodes import eigenmodes, eigenmode_report
+from postmodes import eigenmodes, eigenmode_report
 
 result = eigenmodes("chains/A", "chains/B")
 print(eigenmode_report(result))
@@ -55,7 +57,7 @@ nuisance parameters. Check the selected list printed in the report. To select
 physical parameters explicitly or map different names:
 
 ```python
-from posterior_eigenmodes import eigenmodes, eigenmode_report
+from postmodes import eigenmodes, eigenmode_report
 
 result = eigenmodes(
     covmat_a="path/to/A.covmat",
@@ -72,9 +74,9 @@ print(eigenmode_report(result, precision=4))
 From the terminal, after installation:
 
 ```bash
-posterior-eigenmodes chains/A chains/B --params omega_b omega_cdm
-posterior-eigenmodes chains/A chains/B --interpretation
-python -m posterior_eigenmodes --help
+postmodes chains/A chains/B --params omega_b omega_cdm
+postmodes chains/A chains/B --interpretation
+python -m postmodes --help
 ```
 
 Version 1.0.0 uses rotations in common reference-sigma coordinates and weighted
@@ -101,17 +103,17 @@ It supports three usage patterns:
 
 ## Project Structure
 
-- [posterior_eigenmodes/api.py](posterior_eigenmodes/api.py)
+- [postmodes/api.py](postmodes/api.py)
   high-level entry points such as `eigenmodes(...)`
-- [posterior_eigenmodes/io.py](posterior_eigenmodes/io.py)
+- [postmodes/io.py](postmodes/io.py)
   covariance and chain loading
-- [posterior_eigenmodes/stats.py](posterior_eigenmodes/stats.py)
+- [postmodes/stats.py](postmodes/stats.py)
   weighted means and covariances from samples
-- [posterior_eigenmodes/modes.py](posterior_eigenmodes/modes.py)
+- [postmodes/modes.py](postmodes/modes.py)
   PCA and generalized eigenmode analysis
-- [posterior_eigenmodes/interpretation.py](posterior_eigenmodes/interpretation.py)
+- [postmodes/interpretation.py](postmodes/interpretation.py)
   readable summaries and report generation
-- [posterior_eigenmodes/plotting.py](posterior_eigenmodes/plotting.py)
+- [postmodes/plotting.py](postmodes/plotting.py)
   mode projections and plotting helpers
 
 ## Documentation

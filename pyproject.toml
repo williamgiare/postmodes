@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "posterior-eigenmodes"
+name = "postmodes"
 version = "1.0.0"
 description = "Eigenmode-based comparison of n-dimensional posterior distributions."
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["posterior_eigenmodes*"]
+include = ["postmodes*"]
 
 [project.scripts]
-posterior-eigenmodes = "posterior_eigenmodes.__main__:main"
+postmodes = "postmodes.__main__:main"

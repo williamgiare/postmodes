@@ -36,7 +36,7 @@ It supports three input patterns:
 Typical usage:
 
 ```python
-from posterior_eigenmodes import eigenmodes
+from postmodes import eigenmodes
 
 result = eigenmodes(
     covmat_a="path/to/A.covmat",
@@ -63,7 +63,7 @@ Formats a systematic human-readable report with sections:
 Typical usage:
 
 ```python
-from posterior_eigenmodes import eigenmode_report
+from postmodes import eigenmode_report
 
 print(eigenmode_report(result, precision=4))
 ```
@@ -143,10 +143,10 @@ diagnostic, not a significance calibration. See [Validation](validation.md).
 ## Terminal
 
 ```bash
-posterior-eigenmodes chains/A chains/B --params omega_b omega_cdm
-posterior-eigenmodes chains/A chains/B --interpretation
-posterior-eigenmodes --covmat-a A.covmat --covmat-b B.covmat --json
-python -m posterior_eigenmodes --help
+postmodes chains/A chains/B --params omega_b omega_cdm
+postmodes chains/A chains/B --interpretation
+postmodes --covmat-a A.covmat --covmat-b B.covmat --json
+python -m postmodes --help
 ```
 
 GetDist progress goes to stderr, report/JSON to stdout. Use `--ignore-rows 0.3`,
