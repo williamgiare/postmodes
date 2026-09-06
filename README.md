@@ -77,9 +77,9 @@ posterior-eigenmodes chains/A chains/B --interpretation
 python -m posterior_eigenmodes --help
 ```
 
-Version 0.2 uses rotations in common reference-sigma coordinates and weighted
+Version 1.0.0 uses rotations in common reference-sigma coordinates and weighted
 mode plots with a common origin. Scalar comparison indicators retain their
-definitions. See [migration notes](docs/migration-0.2.md) for changed defaults.
+definitions. See [migration notes](docs/migration-1.0.md) for changed defaults.
 
 It supports three usage patterns:
 

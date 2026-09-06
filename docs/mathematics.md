@@ -74,7 +74,7 @@ cross-covariances. The code does not estimate these or assign tension p-values.
 
 ## 3. Rotation Between Two Posteriors
 
-Version 0.2 uses a common dimensionless metric by default. Define
+Version 1.0.0 uses a common dimensionless metric by default. Define
 
 ```math
 D_A=\operatorname{diag}(\sqrt{(C_A)_{ii}}),\qquad

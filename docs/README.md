@@ -60,7 +60,7 @@ The package therefore separates the comparison into a few distinct geometric que
 - `output.md`: how to read the output quantities
 - `validation.md`: synthetic validation strategy
 - `notebooks.md`: notebook guide
-- `migration-0.2.md`: changed defaults and scientific limitations
+- `migration-1.0.md`: changed defaults and scientific limitations
 
 Reports are numerical by default; `interpretation=True` enables explanatory notes.
 Two chain roots suffice for `eigenmodes(root_a, root_b)`, but automatic parameter

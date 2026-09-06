@@ -1,4 +1,4 @@
-# Version 0.2: numerical and interpretation conventions
+# Version 1.0.0: numerical and interpretation conventions
 
 The definitions of rho, SCCD, the two reference distances, alpha and A_aniso are
 unchanged. Well-resolved positive-definite inputs should recover previous scalar
