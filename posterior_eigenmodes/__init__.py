@@ -8,6 +8,7 @@ from .interpretation import (
     summarize_modes,
     top_correlation_changes,
     top_eigenvector_alignments,
+    rotation_subspace_angles,
 )
 from .modes import analyze_covariances, analyze_covariance
 from .plotting import (
@@ -17,9 +18,11 @@ from .plotting import (
     plot_mode_1d_getdist,
 )
 from .results import CovarianceAnalysis, CovarianceComparison
+from .validation import bootstrap_stability
 
 __all__ = [
     "CovarianceAnalysis",
+    "bootstrap_stability",
     "CovarianceComparison",
     "analyze_covariances",
     "analyze_covariance",
@@ -34,4 +37,5 @@ __all__ = [
     "summarize_modes",
     "top_correlation_changes",
     "top_eigenvector_alignments",
+    "rotation_subspace_angles",
 ]

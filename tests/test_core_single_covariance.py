@@ -494,6 +494,7 @@ def test_top_eigenvector_alignments_reports_overlap_structure() -> None:
         np.array([[4.0, 0.0], [0.0, 1.0]]),
         np.array([[8.0, 0.0], [0.0, 0.5]]),
         ["omega_m", "sigma8"],
+        rotation_basis="original",
     )
 
     alignments = top_eigenvector_alignments(result, top_n=2)
@@ -588,7 +589,7 @@ def test_eigenmode_report_notes_near_degenerate_rotation_modes() -> None:
         ["p1", "p2"],
     )
 
-    report = eigenmode_report(result, precision=3)
+    report = eigenmode_report(result, precision=3, interpretation=True)
 
     assert "note = A modes 1 and 2 are nearly degenerate" in report
 
@@ -639,6 +640,7 @@ def test_project_samples_onto_modes_recovers_expected_variances() -> None:
         dataset="alternative",
         parameter_names=["omega_m", "sigma8"],
         use_normalized_modes=False,
+        reference_center=np.zeros(2),
     )
 
     np.testing.assert_allclose(np.var(projected_ref, axis=0), np.array([1.0, 1.0]))

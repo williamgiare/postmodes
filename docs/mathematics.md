@@ -32,7 +32,11 @@ So for a single posterior:
 - axis orientation comes from the eigenvectors,
 - axis lengths come from the square roots of the eigenvalues.
 
-This is the PCA geometry of the posterior.
+This is the covariance-ellipsoid approximation to the posterior. It describes
+second moments exactly when they exist, but does not describe all non-Gaussian
+features. Raw PCA axes and eigenvalues depend on parameter units. The square
+roots are semi-axis lengths at Mahalanobis radius one, not full axis lengths
+or the boundary of a 68% probability region in multiple dimensions.
 
 ## 2. Mean Shifts
 
@@ -62,11 +66,26 @@ Their interpretation is geometric:
 - `S_{A|B}`: how far `A` is from `B` in the internal units of `B`,
 - `S_{AB}`: symmetric combined-covariance distance.
 
-These are distance measures in posterior units. They should not automatically be interpreted as formal tension significances if `A` and `B` are statistically correlated.
+These are geometric distances. Even for independent Gaussian estimates, a
+multidimensional Mahalanobis radius is not directly a one-dimensional Gaussian
+significance: its squared value requires a calibrated reference distribution.
+For estimates from shared data, the covariance of their difference also involves
+cross-covariances. The code does not estimate these or assign tension p-values.
 
 ## 3. Rotation Between Two Posteriors
 
-Let `w_i^{(A)}` be the eigenvectors of `C_A` and `w_j^{(B)}` the eigenvectors of `C_B`.
+Version 0.2 uses a common dimensionless metric by default. Define
+
+```math
+D_A=\operatorname{diag}(\sqrt{(C_A)_{ii}}),\qquad
+\widehat C_A=D_A^{-1}C_AD_A^{-1},\qquad
+\widehat C_B=D_A^{-1}C_BD_A^{-1}.
+```
+
+Let `w_i^{(A)}` and `w_j^{(B)}` be the eigenvectors of these two standardized
+matrices. Both use the same scales from A. These are different from the raw PCA
+axes printed in report sections A and B. Standardization preserves correlations;
+it does not whiten A into a sphere.
 
 A convenient rotation diagnostic is the overlap matrix
 
@@ -80,7 +99,18 @@ Interpretation:
 - values near `0`: near-orthogonality,
 - off-diagonal structure: mixing between modes.
 
-This quantifies how much the principal bases of `A` and `B` rotate relative to each other.
+This quantifies alignment in reference-sigma units. It is invariant to common
+changes of parameter units, but not arbitrary reparametrizations. Use
+`rotation_basis="original"` for the previous coordinate-dependent convention.
+An overlap is an unsigned axis cosine; eigenvector signs are arbitrary, and
+sorting eigenvalues can permute mode labels. The overlap matrix is not itself
+a signed rotation matrix. There is no unique scalar rotation angle in n dimensions.
+
+Adjacent eigenvalue ratios at most 1.1 trigger a heuristic degeneracy note when
+interpretation is enabled. Individual axes inside a degenerate cluster are not
+identifiable. `rotation_subspace_angles` compares complete selected clusters in
+the declared metric. Their stability requires separation from the remaining
+spectrum. Comparing full n-dimensional bases always yields zero subspace angles.
 
 ## 4. Whitened Comparison Matrix
 
@@ -96,6 +126,13 @@ Geometric meaning:
 - `B` becomes a deformation relative to that unit sphere.
 
 So `C` is the central comparison matrix. It isolates the geometry of the change from `A` to `B`.
+
+Numerically, the solver scales both inputs by D_A, uses Cholesky whitening, and
+uses the orthogonal polar factor to recover the displayed symmetric-whitening
+convention. The definition of C has not changed. Both covariances must be positive
+definite; singular inputs are rejected without eigenvalue clipping or regularization.
+`eigenvalue_floor` is now a relative min/max spectral tolerance in correlation
+coordinates (default 1e-14). Symmetry is also checked in dimensionless coordinates.
 
 ## 5. Generalized Eigenvalues
 
@@ -165,6 +202,12 @@ So the deformation is decomposed into:
 - overall scale: `\alpha`,
 - residual shape distortion: `A_{\mathrm{aniso}}`.
 
+All logarithms are natural. Alpha is a variance scale, sqrt(alpha) a linear scale.
+The covariance-ellipsoid volume ratio is alpha^(N/2). Alpha=1 means equal volumes,
+not equal shapes. A rotation of an anisotropic ellipsoid can itself generate
+non-unit rho and nonzero A_aniso. These metrics do not uniquely separate physical
+causes such as loss of likelihood information and changes induced by priors.
+
 ## 7. Generalized Modes
 
 The eigenvectors of the whitened comparison matrix live in whitened coordinates. To interpret them in the original parameter basis, they are mapped back to parameter space.
@@ -181,6 +224,25 @@ where:
 - `v_i` is the comparison mode in the original coordinates.
 
 These modes are not the PCA modes of `A` or `B` separately. They are the directions that are most informative for the difference between `A` and `B`.
+
+Precisely, V=C_A^(-1/2)U contains projection coefficients, with
+
+```math
+V^T C_A V=I,\qquad V^T C_B V=\operatorname{diag}(\rho_i).
+```
+
+Default projections are `(x-mu_A)^T V` for both datasets. A has unit covariance
+when projected samples reproduce the input covariance; B retains its mean shift.
+`center="separate"` removes each mean, while `center="none"` applies no centering.
+`normalization="euclidean"` rescales each column to Euclidean norm one. This changes
+absolute variances but preserves B/A variance ratios. Reports display this latter
+normalization for readability; coefficients are unit-dependent, not parameter importance.
+
+Projection coefficients are covectors, not displacement axes of the original
+ellipsoid. The corresponding displacement at fixed other mode coordinates is a
+column of V^(-T)=C_A^(1/2)U. Generalized modes need not be Euclidean-orthogonal in
+the original coordinates. Zero cross-covariance does not imply independence for
+non-Gaussian posteriors. Use sample weights for all empirical distributions and variances.
 
 ## 8. What the Package Measures
 

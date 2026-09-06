@@ -40,7 +40,7 @@ From this construction the package extracts:
 - PCA modes of `B`,
 - generalized comparison modes of `C`,
 - mean-shift diagnostics,
-- rotation diagnostics,
+- rotation diagnostics in a declared common metric (A's marginal sigmas by default),
 - mode-by-mode variance ratios,
 - isotropic and anisotropic deformation summaries,
 - correlation-structure changes.
@@ -60,3 +60,8 @@ The package therefore separates the comparison into a few distinct geometric que
 - `output.md`: how to read the output quantities
 - `validation.md`: synthetic validation strategy
 - `notebooks.md`: notebook guide
+- `migration-0.2.md`: changed defaults and scientific limitations
+
+Reports are numerical by default; `interpretation=True` enables explanatory notes.
+Two chain roots suffice for `eigenmodes(root_a, root_b)`, but automatic parameter
+matching is exact-name matching, not an inference of physical equivalence.

@@ -26,6 +26,10 @@ Use it to check whether:
 - generalized eigenvalues are recovered correctly,
 - projection effects are understood correctly.
 
+Cases 1-4 explicitly use the original-coordinate rotation metric to preserve
+their controlled geometric predictions. Cases 5-7 test common-unit invariance,
+weighted projections and shifts, and optional block-bootstrap stability.
+
 ## 3_Basic_Example.ipynb
 
 Real-data workflow example using:
@@ -45,3 +49,8 @@ Extended real-data example showing:
 - eigenvector-overlap plots,
 - generalized mode summaries,
 - mode-space histograms and GetDist plots.
+
+Histograms use chain weights and common bins. The examples keep A as full CMB
+and B as compressed CMB, use 30% burn-in, and demonstrate numerical reports with
+optional interpretations. The advanced example compares supplied covariance
+files to retained-chain estimates without replacing the supplied matrices.

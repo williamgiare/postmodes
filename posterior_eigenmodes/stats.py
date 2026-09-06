@@ -87,6 +87,8 @@ def select_sample_columns(
         return matrix.copy(), names
 
     requested = tuple(selected_parameters)
+    if not requested or len(set(requested)) != len(requested):
+        raise ValueError("Selected parameters must be non-empty and unique.")
     missing = [name for name in requested if name not in names]
     if missing:
         raise ValueError(
@@ -121,8 +123,8 @@ def _normalized_weights(
     if np.any(array < 0.0):
         raise ValueError("Weights must be non-negative.")
 
-    total = float(np.sum(array))
-    if total <= 0.0:
+    largest = float(np.max(array))
+    if largest <= 0.0:
         raise ValueError("Weights must have strictly positive sum.")
-
-    return array / total
+    scaled = array / largest
+    return scaled / np.sum(scaled)

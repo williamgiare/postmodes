@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from dataclasses import replace
+import warnings
 
 import numpy as np
 
@@ -14,16 +16,20 @@ from .stats import select_sample_columns, weighted_covariance, weighted_mean
 
 
 def eigenmodes(
-    *,
-    params_A: Sequence[str],
-    params_B: Sequence[str],
     chain_root_a: str | Path | None = None,
     chain_root_b: str | Path | None = None,
+    *,
+    params_A: Sequence[str] | None = None,
+    params_B: Sequence[str] | None = None,
+    params: Sequence[str] | None = None,
     covmat_a: str | Path | None = None,
     covmat_b: str | Path | None = None,
     chain_settings: dict[str, Any] | None = None,
     symmetry_atol: float = 1e-10,
     eigenvalue_floor: float = 1e-14,
+    rotation_basis: str = "reference_standardized",
+    check_covariances: bool = False,
+    covariance_check_tolerance: float = 0.1,
 ) -> CovarianceComparison:
     """High-level posterior comparison using the best available input information.
 
@@ -55,36 +61,59 @@ def eigenmodes(
             "eigenmodes requires either both covmat paths, both chain roots, or both."
         )
 
-    if len(params_A) != len(params_B):
-        raise ValueError("params_A and params_B must have the same length.")
-
     mean_a = None
     mean_b = None
+    if not np.isfinite(covariance_check_tolerance) or covariance_check_tolerance < 0:
+        raise ValueError("covariance_check_tolerance must be finite and non-negative.")
     if have_chains:
-        mean_a, mean_b = _means_from_chain_roots(
-            chain_root_a,
-            chain_root_b,
-            params_A=params_A,
-            params_B=params_B,
-            chain_settings=chain_settings,
-        )
-
+        samples_a = load_getdist_chain(chain_root_a, settings=chain_settings)
+        samples_b = load_getdist_chain(chain_root_b, settings=chain_settings)
     if have_covmats:
         covariance_a, names_a = load_covmat(covmat_a)
         covariance_b, names_b = load_covmat(covmat_b)
+    else:
+        names_a = tuple(p.name for p in samples_a.getParamNames().names if not p.isDerived)
+        names_b = tuple(p.name for p in samples_b.getParamNames().names if not p.isDerived)
+
+    if params is not None:
+        if params_A is not None or params_B is not None:
+            raise ValueError("Use either params or params_A/params_B, not both.")
+        params_A = params_B = params
+    if params_A is None and params_B is None:
+        params_A = tuple(n for n in names_a if n in names_b)
+        params_B = params_A
+        excluded = set(names_a).symmetric_difference(names_b)
+        if excluded:
+            warnings.warn("Automatic selection excludes unmatched names: " + ", ".join(sorted(excluded)) + ". Use params_A/params_B for explicit mappings.", UserWarning)
+    elif params_A is None:
+        params_A = params_B
+    elif params_B is None:
+        params_B = params_A
+    if len(params_A) == 0 or len(params_A) != len(params_B):
+        raise ValueError("Parameter selections must be non-empty and have equal lengths.")
+
+    if have_covmats and have_chains:
+        selected_a, _ = select_sample_columns(samples_a.samples, samples_a.getParamNames().list(), params_A)
+        selected_b, _ = select_sample_columns(samples_b.samples, samples_b.getParamNames().list(), params_B)
+        mean_a = weighted_mean(selected_a, samples_a.weights)
+        mean_b = weighted_mean(selected_b, samples_b.weights)
+
+    if have_covmats:
 
         aligned_a, selected_names_a = select_parameter_subspace(
             covariance_a,
             names_a,
             selected_parameters=params_A,
+            symmetry_atol=symmetry_atol,
         )
         aligned_b, selected_names_b = select_parameter_subspace(
             covariance_b,
             names_b,
             selected_parameters=params_B,
+            symmetry_atol=symmetry_atol,
         )
 
-        return compare_covariances(
+        result = compare_covariances(
             aligned_a,
             aligned_b,
             selected_names_a,
@@ -93,10 +122,25 @@ def eigenmodes(
             alternative_parameter_names=selected_names_b,
             symmetry_atol=symmetry_atol,
             eigenvalue_floor=eigenvalue_floor,
+            rotation_basis=rotation_basis,
         )
+        if have_chains and check_covariances:
+            diagnostics = {}
+            for label, supplied, data, weights in (
+                ("A", aligned_a, selected_a, samples_a.weights),
+                ("B", aligned_b, selected_b, samples_b.weights),
+            ):
+                estimated = weighted_covariance(data, weights)
+                scales = np.sqrt(np.diag(supplied))
+                baseline = supplied / scales[:, None] / scales[None, :]
+                difference = (estimated - supplied) / scales[:, None] / scales[None, :]
+                error = float(np.linalg.norm(difference) / np.linalg.norm(baseline))
+                diagnostics[f"{label}_standardized_relative_covariance_difference"] = error
+                if error > covariance_check_tolerance:
+                    warnings.warn(f"{label}: supplied covariance differs from the weighted chain estimate ({error:.3g}).", UserWarning)
+            result = replace(result, input_covariance_diagnostics=diagnostics)
+        return result
 
-    samples_a = load_getdist_chain(chain_root_a, settings=chain_settings)
-    samples_b = load_getdist_chain(chain_root_b, settings=chain_settings)
     return compare_samples(
         samples_a,
         samples_b,
@@ -104,6 +148,7 @@ def eigenmodes(
         selected_parameters_b=params_B,
         symmetry_atol=symmetry_atol,
         eigenvalue_floor=eigenvalue_floor,
+        rotation_basis=rotation_basis,
     )
 
 
@@ -119,6 +164,8 @@ def compare_covariances(
     selected_parameters_b: Sequence[str] | None = None,
     symmetry_atol: float = 1e-10,
     eigenvalue_floor: float = 1e-14,
+    rotation_basis: str = "reference_standardized",
+    mean_order: str = "full",
 ) -> CovarianceComparison:
     """High-level entry point for direct covariance comparison."""
 
@@ -133,6 +180,8 @@ def compare_covariances(
         selected_parameters_b=selected_parameters_b,
         symmetry_atol=symmetry_atol,
         eigenvalue_floor=eigenvalue_floor,
+        rotation_basis=rotation_basis,
+        mean_order=mean_order,
     )
 
 
@@ -148,6 +197,7 @@ def compare_samples(
     weights_b: np.ndarray | None = None,
     symmetry_atol: float = 1e-10,
     eigenvalue_floor: float = 1e-14,
+    rotation_basis: str = "reference_standardized",
 ) -> CovarianceComparison:
     """High-level entry point for sample-based posterior comparison."""
 
@@ -204,6 +254,7 @@ def compare_samples(
         alternative_parameter_names=selected_names_b,
         symmetry_atol=symmetry_atol,
         eigenvalue_floor=eigenvalue_floor,
+        rotation_basis=rotation_basis,
     )
 
 
@@ -266,8 +317,13 @@ def _coerce_samples(
 ) -> tuple[np.ndarray, tuple[str, ...], np.ndarray | None]:
     """Convert raw arrays or getdist MCSamples into a sample matrix."""
 
-    if hasattr(samples, "samples") and hasattr(samples, "getParamNames"):
-        names = tuple(samples.getParamNames().list())
+    if hasattr(samples, "samples") and hasattr(samples, "weights"):
+        if hasattr(samples, "getParamNames"):
+            names = tuple(samples.getParamNames().list())
+        elif parameter_names is not None:
+            names = tuple(parameter_names)
+        else:
+            raise ValueError("parameter_names are required for GetDist WeightedSamples without metadata.")
         matrix = np.asarray(samples.samples, dtype=float)
         if matrix.ndim != 2:
             raise ValueError(
@@ -279,7 +335,7 @@ def _coerce_samples(
                 "Number of GetDist parameter names must match the sample dimension; "
                 f"received {len(names)} names for dimension {matrix.shape[1]}."
             )
-        weights = np.asarray(samples.weights, dtype=float)
+        weights = None if samples.weights is None else np.asarray(samples.weights, dtype=float)
         return matrix, names, weights
 
     matrix = np.asarray(samples, dtype=float)
@@ -294,40 +350,6 @@ def _coerce_samples(
         )
 
     return matrix, tuple(parameter_names), None
-
-
-def _means_from_chain_roots(
-    chain_root_a: str | Path,
-    chain_root_b: str | Path,
-    *,
-    params_A: Sequence[str],
-    params_B: Sequence[str],
-    chain_settings: dict[str, Any] | None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Estimate selected posterior means from GetDist chains."""
-
-    samples_a = load_getdist_chain(chain_root_a, settings=chain_settings)
-    samples_b = load_getdist_chain(chain_root_b, settings=chain_settings)
-
-    matrix_a = np.asarray(samples_a.samples, dtype=float)
-    matrix_b = np.asarray(samples_b.samples, dtype=float)
-    names_a = tuple(samples_a.getParamNames().list())
-    names_b = tuple(samples_b.getParamNames().list())
-
-    selected_a, _ = select_sample_columns(
-        matrix_a,
-        names_a,
-        selected_parameters=params_A,
-    )
-    selected_b, _ = select_sample_columns(
-        matrix_b,
-        names_b,
-        selected_parameters=params_B,
-    )
-
-    mean_a = weighted_mean(selected_a, np.asarray(samples_a.weights, dtype=float))
-    mean_b = weighted_mean(selected_b, np.asarray(samples_b.weights, dtype=float))
-    return mean_a, mean_b
 
 
 def _validate_path_pair(

@@ -24,7 +24,7 @@ def load_covmat(path: str | Path) -> tuple[np.ndarray, tuple[str, ...]]:
     if not parameter_names:
         raise ValueError("Covariance matrix header does not contain parameter names.")
 
-    matrix = np.loadtxt(covmat_path, comments="#", dtype=float)
+    matrix = np.loadtxt(covmat_path, comments="#", dtype=float, ndmin=2)
     if matrix.ndim != 2:
         raise ValueError(
             "Loaded covariance matrix must be a 2D array; "

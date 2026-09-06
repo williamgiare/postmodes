@@ -13,11 +13,12 @@ def validate_covariance_matrix(
 ) -> np.ndarray:
     """Return a validated covariance matrix as a float array.
     
-    The matrix is required to be square and symmetric within ``symmetry_atol``.
+    Symmetry is tested in dimensionless diagonal-scaled coordinates when
+    variances are positive. ``symmetry_atol`` is then unit independent.
     """
 
     matrix = np.asarray(covariance, dtype=float)
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or matrix.shape[0] == 0:
         raise ValueError(
             "Covariance matrix must be a square 2D array; "
             f"received shape {matrix.shape}."
@@ -26,14 +27,18 @@ def validate_covariance_matrix(
     if require_finite and not np.all(np.isfinite(matrix)):
         raise ValueError("Covariance matrix contains non-finite values.")
 
-    if not np.allclose(matrix, matrix.T, atol=symmetry_atol, rtol=0.0):
+    if not np.isfinite(symmetry_atol) or symmetry_atol < 0:
+        raise ValueError("symmetry_atol must be finite and non-negative.")
+    scales = np.sqrt(np.abs(np.diag(matrix)))
+    checked = matrix / scales[:, None] / scales[None, :] if np.all(scales > 0) else matrix
+    if not np.allclose(checked, checked.T, atol=symmetry_atol, rtol=0.0):
         max_asymmetry = float(np.max(np.abs(matrix - matrix.T)))
         raise ValueError(
             "Covariance matrix must be symmetric within tolerance; "
             f"maximum asymmetry is {max_asymmetry:.3e}."
         )
 
-    return matrix
+    return 0.5 * matrix + 0.5 * matrix.T
 
 
 def covariance_condition_number(
@@ -101,6 +106,8 @@ def select_parameter_subspace(
         return matrix.copy(), names
 
     requested = tuple(selected_parameters)
+    if not requested or len(set(requested)) != len(requested):
+        raise ValueError("Selected parameters must be non-empty and unique.")
     missing = [name for name in requested if name not in names]
     if missing:
         raise ValueError(

@@ -4,14 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "posterior-eigenmodes"
-version = "0.1.0"
+version = "0.2.0"
 description = "Eigenmode-based comparison of n-dimensional posterior distributions."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "getdist>=1.5",
     "numpy>=1.24",
+    "scipy>=1.10",
 ]
 
 [tool.setuptools.packages.find]
 include = ["posterior_eigenmodes*"]
+
+[project.scripts]
+posterior-eigenmodes = "posterior_eigenmodes.__main__:main"

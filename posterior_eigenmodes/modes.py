@@ -3,10 +3,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from scipy.linalg import cholesky, polar, solve_triangular
+import warnings
+
+from .numerics import covariance_eigensystem, scaled_spd
 
 from .geometry import (
     correlation_matrix,
-    covariance_condition_number,
     select_parameter_subspace,
     validate_covariance_matrix,
 )
@@ -24,36 +27,17 @@ def _symmetric_eigensystem(
     return eigenvalues[order], eigenvectors[:, order]
 
 
-def _inverse_symmetric_square_root(
-    matrix: np.ndarray,
-    *,
-    symmetry_atol: float = 1e-10,
-    eigenvalue_floor: float = 1e-14,
-) -> np.ndarray:
-    """Compute a stable inverse square root for a symmetric positive matrix."""
-
-    validated = validate_covariance_matrix(matrix, symmetry_atol=symmetry_atol)
-    eigenvalues, eigenvectors = np.linalg.eigh(validated)
-
-    if np.any(eigenvalues <= eigenvalue_floor):
-        min_eigenvalue = float(np.min(eigenvalues))
-        raise ValueError(
-            "Reference covariance is not positive definite enough for whitening; "
-            f"minimum eigenvalue is {min_eigenvalue:.3e}, "
-            f"required floor is {eigenvalue_floor:.3e}."
-        )
-
-    inv_sqrt_eigenvalues = 1.0 / np.sqrt(eigenvalues)
-    return (eigenvectors * inv_sqrt_eigenvalues) @ eigenvectors.T
-
-
 def _normalize_mode_columns(mode_vectors: np.ndarray) -> np.ndarray:
     """Normalize each mode vector to unit Euclidean norm."""
 
-    norms = np.linalg.norm(mode_vectors, axis=0)
+    scale = np.max(np.abs(mode_vectors), axis=0)
+    if np.any(scale == 0.0) or not np.all(np.isfinite(scale)):
+        raise ValueError("Encountered an invalid generalized mode.")
+    scaled = mode_vectors / scale
+    norms = np.linalg.norm(scaled, axis=0)
     if np.any(norms == 0.0):
         raise ValueError("Encountered a zero-norm generalized mode.")
-    return mode_vectors / norms
+    return scaled / norms
 
 
 def analyze_covariance(
@@ -74,18 +58,9 @@ def analyze_covariance(
     )
     matrix = validate_covariance_matrix(matrix, symmetry_atol=symmetry_atol)
 
-    eigenvalues, eigenvectors = _symmetric_eigensystem(matrix)
-
-    if np.any(eigenvalues < eigenvalue_floor):
-        min_eigenvalue = float(np.min(eigenvalues))
-        raise ValueError(
-            "Covariance matrix has eigenvalues below the allowed floor; "
-            f"minimum eigenvalue is {min_eigenvalue:.3e}, "
-            f"floor is {eigenvalue_floor:.3e}."
-        )
-
-    clipped = np.clip(eigenvalues, a_min=0.0, a_max=None)
-    standard_deviations = np.sqrt(clipped)
+    scales, corr = scaled_spd(matrix, floor=eigenvalue_floor)
+    eigenvalues, eigenvectors = covariance_eigensystem(scales, corr)
+    standard_deviations = np.sqrt(eigenvalues)
 
     return CovarianceAnalysis(
         parameter_names=names,
@@ -94,9 +69,7 @@ def analyze_covariance(
         eigenvalues=eigenvalues,
         eigenvectors=eigenvectors,
         standard_deviations=standard_deviations,
-        condition_number=covariance_condition_number(
-            matrix, symmetry_atol=symmetry_atol
-        ),
+        condition_number=float(eigenvalues[0] / eigenvalues[-1]),
     )
 
 
@@ -112,6 +85,8 @@ def analyze_covariances(
     selected_parameters_b: Sequence[str] | None = None,
     symmetry_atol: float = 1e-10,
     eigenvalue_floor: float = 1e-14,
+    rotation_basis: str = "reference_standardized",
+    mean_order: str = "full",
 ) -> CovarianceComparison:
     """Compare two covariances through a whitened generalized eigenmode analysis."""
 
@@ -133,6 +108,7 @@ def analyze_covariances(
         full_names=tuple(parameter_names),
         selected_names=names,
         label="reference_mean",
+        mean_order=mean_order,
     )
     alt_mean = _prepare_optional_mean(
         alternative_mean,
@@ -141,6 +117,7 @@ def analyze_covariances(
         ),
         selected_names=alt_names,
         label="alternative_mean",
+        mean_order=mean_order,
     )
 
     if ref_matrix.shape != alt_matrix.shape:
@@ -150,29 +127,65 @@ def analyze_covariances(
 
     ref_matrix = validate_covariance_matrix(ref_matrix, symmetry_atol=symmetry_atol)
     alt_matrix = validate_covariance_matrix(alt_matrix, symmetry_atol=symmetry_atol)
-    reference_eigenvalues, reference_eigenvectors = _symmetric_eigensystem(ref_matrix)
-    alternative_eigenvalues, alternative_eigenvectors = _symmetric_eigensystem(alt_matrix)
-    eigenvector_overlap = np.abs(reference_eigenvectors.T @ alternative_eigenvectors)
+    scales, ref_scaled = scaled_spd(ref_matrix, floor=eigenvalue_floor, label="A")
+    alt_scales, alt_corr = scaled_spd(alt_matrix, floor=eigenvalue_floor, label="B")
+    reference_eigenvalues, reference_eigenvectors = covariance_eigensystem(scales, ref_scaled)
+    alternative_eigenvalues, alternative_eigenvectors = covariance_eigensystem(alt_scales, alt_corr)
+    original_overlap = np.clip(np.abs(reference_eigenvectors.T @ alternative_eigenvectors), 0, 1)
+    alt_scaled = alt_matrix / scales[:, None] / scales[None, :]
+    if not np.all(np.isfinite(alt_scaled)):
+        raise ValueError("Relative covariance scales exceed floating-point range.")
 
-    ref_inv_sqrt = _inverse_symmetric_square_root(
-        ref_matrix,
-        symmetry_atol=symmetry_atol,
-        eigenvalue_floor=eigenvalue_floor,
-    )
-    whitened_alt = ref_inv_sqrt @ alt_matrix @ ref_inv_sqrt
+    if rotation_basis == "reference_standardized":
+        rot_a, rot_b = ref_scaled, alt_scaled
+        rotation_scales = scales
+    elif rotation_basis == "original":
+        rot_a, rot_b = ref_matrix, alt_matrix
+        rotation_scales = np.ones_like(scales)
+    else:
+        raise ValueError("rotation_basis must be 'reference_standardized' or 'original'.")
+    if rotation_basis == "original":
+        rot_evals_a, rot_vecs_a = reference_eigenvalues, reference_eigenvectors
+        rot_evals_b, rot_vecs_b = alternative_eigenvalues, alternative_eigenvectors
+    else:
+        rot_evals_a, rot_vecs_a = _symmetric_eigensystem(rot_a)
+        rot_evals_b, rot_vecs_b = covariance_eigensystem(alt_scales / scales, alt_corr)
+    eigenvector_overlap = np.clip(np.abs(rot_vecs_a.T @ rot_vecs_b), 0, 1)
+
+    # Solve in dimensionless coordinates; never invert the raw covariance.
+    L = cholesky(ref_scaled, lower=True)
+    left = solve_triangular(L, alt_scaled, lower=True)
+    C_chol = solve_triangular(L, left.T, lower=True).T
+    C_chol = 0.5 * (C_chol + C_chol.T)
+    degradation_factors, U_chol = _symmetric_eigensystem(C_chol)
+    if np.any(degradation_factors <= 0) or not np.all(np.isfinite(degradation_factors)):
+        raise ValueError("Comparison eigenvalues are not strictly positive and finite; no clipping was applied.")
+    V_scaled = solve_triangular(L.T, U_chol, lower=False)
+    mode_vectors = V_scaled / scales[:, None]
+
+    # W = Q A^(-1/2): its polar factor converts the Cholesky whitening
+    # back to the original symmetric-whitening convention for the displayed C.
+    W = solve_triangular(L, np.diag(1.0 / scales), lower=True)
+    Q, _ = polar(W)
+    whitened_eigenvectors = Q.T @ U_chol
+    whitened_alt = Q.T @ C_chol @ Q
     whitened_alt = 0.5 * (whitened_alt + whitened_alt.T)
-
-    degradation_factors, whitened_eigenvectors = _symmetric_eigensystem(whitened_alt)
-
-    if np.any(degradation_factors < -eigenvalue_floor):
-        min_eigenvalue = float(np.min(degradation_factors))
-        raise ValueError(
-            "Whitened comparison matrix has significantly negative eigenvalues; "
-            f"minimum eigenvalue is {min_eigenvalue:.3e}."
-        )
-
-    degradation_factors = np.clip(degradation_factors, a_min=0.0, a_max=None)
-    mode_vectors = ref_inv_sqrt @ whitened_eigenvectors
+    identity_error = np.linalg.norm(V_scaled.T @ ref_scaled @ V_scaled - np.eye(len(names)), ord=2)
+    lhs = alt_scaled @ V_scaled
+    rhs = (ref_scaled @ V_scaled) * degradation_factors
+    residual = np.max(np.linalg.norm(lhs - rhs, axis=0) /
+                      (np.linalg.norm(lhs, axis=0) + np.linalg.norm(rhs, axis=0)))
+    b_error = np.linalg.norm((V_scaled.T @ alt_scaled @ V_scaled) /
+                            np.sqrt(np.outer(degradation_factors, degradation_factors)) - np.eye(len(names)), ord=2)
+    diagnostics = {
+        "generalized_residual": float(residual),
+        "reference_orthogonality_error": float(identity_error),
+        "alternative_diagonalization_error": float(b_error),
+        "reference_correlation_condition": float(np.linalg.cond(ref_scaled)),
+        "alternative_correlation_condition": float(np.linalg.cond(alt_corr)),
+    }
+    if max(residual, identity_error, b_error) > 1e-7:
+        warnings.warn("Large eigensystem residual: inspect numerical_diagnostics before interpretation.", RuntimeWarning)
     normalized_mode_coefficients = _normalize_mode_columns(mode_vectors)
 
     reference_correlation = correlation_matrix(ref_matrix, symmetry_atol=symmetry_atol)
@@ -200,12 +213,16 @@ def analyze_covariances(
         alternative_eigenvalues=alternative_eigenvalues,
         alternative_eigenvectors=alternative_eigenvectors,
         eigenvector_overlap=eigenvector_overlap,
-        reference_condition_number=covariance_condition_number(
-            ref_matrix, symmetry_atol=symmetry_atol
-        ),
-        alternative_condition_number=covariance_condition_number(
-            alt_matrix, symmetry_atol=symmetry_atol
-        ),
+        reference_condition_number=float(reference_eigenvalues[0] / reference_eigenvalues[-1]),
+        alternative_condition_number=float(alternative_eigenvalues[0] / alternative_eigenvalues[-1]),
+        rotation_basis=rotation_basis,
+        rotation_scales=rotation_scales,
+        rotation_reference_eigenvalues=rot_evals_a,
+        rotation_alternative_eigenvalues=rot_evals_b,
+        rotation_reference_eigenvectors=rot_vecs_a,
+        rotation_alternative_eigenvectors=rot_vecs_b,
+        original_eigenvector_overlap=original_overlap,
+        numerical_diagnostics=diagnostics,
     )
 
 
@@ -215,9 +232,12 @@ def _prepare_optional_mean(
     full_names: tuple[str, ...],
     selected_names: tuple[str, ...],
     label: str,
+    mean_order: str = "full",
 ) -> np.ndarray | None:
     """Align an optional mean vector either from full or already-selected coordinates."""
 
+    if mean_order not in ("full", "selected"):
+        raise ValueError("mean_order must be 'full' or 'selected'.")
     if mean is None:
         return None
 
@@ -227,7 +247,7 @@ def _prepare_optional_mean(
     if not np.all(np.isfinite(mean_array)):
         raise ValueError(f"{label} contains non-finite values.")
 
-    if mean_array.shape[0] == len(selected_names):
+    if mean_order == "selected" and mean_array.shape[0] == len(selected_names):
         return mean_array.copy()
 
     if mean_array.shape[0] == len(full_names):
@@ -236,6 +256,9 @@ def _prepare_optional_mean(
             [mean_array[name_to_index[name]] for name in selected_names],
             dtype=float,
         )
+
+    if mean_array.shape[0] == len(selected_names):
+        return mean_array.copy()
 
     raise ValueError(
         f"{label} length must match either the full parameter list "

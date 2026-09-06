@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .results import CovarianceComparison
+from .numerics import mahalanobis_shift
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,32 @@ def top_eigenvector_alignments(
     return tuple(overlaps[:top_n])
 
 
+def rotation_subspace_angles(comparison, reference_modes, alternative_modes):
+    """Principal angles in degrees between selected rotation eigenspaces.
+
+    Indices are one-based in the declared rotation basis. Choose whole clusters
+    separated from the remaining spectrum. Comparing two complete bases always
+    gives zero angles and cannot measure a rotation of axes.
+    """
+    from scipy.linalg import subspace_angles
+
+    def indices(modes):
+        values = tuple(modes)
+        n = len(comparison.parameter_names)
+        if not values or len(set(values)) != len(values) or any(
+            not isinstance(i, (int, np.integer)) or not 1 <= i <= n for i in values
+        ):
+            raise ValueError("Modes must be unique one-based indices in range.")
+        return np.array(values) - 1
+    ia, ib = indices(reference_modes), indices(alternative_modes)
+    if len(ia) != len(ib):
+        raise ValueError("Compared eigenspaces must have equal dimensions.")
+    return np.degrees(subspace_angles(
+        comparison.rotation_reference_eigenvectors[:, ia],
+        comparison.rotation_alternative_eigenvectors[:, ib],
+    ))
+
+
 def format_mode_direction(
     comparison: CovarianceComparison,
     *,
@@ -207,6 +234,7 @@ def format_mode_summary(
     mode_index: int | None = None,
     max_terms: int | None = None,
     precision: int = 3,
+    interpretation: bool = False,
 ) -> str:
     """Return a compact human-readable summary of one or all generalized modes."""
 
@@ -218,6 +246,7 @@ def format_mode_summary(
                 mode_index=idx,
                 max_terms=max_terms,
                 precision=precision,
+                interpretation=interpretation,
             )
             for idx in range(1, n_modes + 1)
         )
@@ -231,7 +260,7 @@ def format_mode_summary(
         f"Mode {summary.mode_index}",
         f"rho = {summary.degradation_factor:.{precision}g}",
         f"sigma ratio = {summary.sigma_ratio:.{precision}g}",
-        f"status = {summary.status}",
+        *([f"status = {summary.status}"] if interpretation else []),
         "direction:",
         format_mode_direction(
             comparison,
@@ -251,10 +280,14 @@ def eigenmode_report(
     precision: int = 3,
     top_rotation_pairs: int = 6,
     top_correlation_pairs: int = 4,
+    interpretation: bool = False,
 ) -> str:
     """Return a systematic report with sections for A, B, rotations, and C."""
 
     lines = [
+        "A parameters: " + ", ".join(comparison.parameter_names),
+        "B parameters: " + ", ".join(comparison.alternative_parameter_names),
+        "",
         "A",
         _format_single_posterior_report(
             name="Reference posterior",
@@ -297,7 +330,12 @@ def eigenmode_report(
         ),
     ]
 
-    return "\n".join(lines)
+    report = "\n".join(lines)
+    if not interpretation:
+        report = "\n".join(line for line in report.splitlines() if not any(
+            token in line for token in ("interpretation =", "note =", "axes =", "convention =")
+        ))
+    return report
 
 
 def format_comparison_report(
@@ -307,6 +345,7 @@ def format_comparison_report(
     precision: int = 3,
     top_rotation_pairs: int = 6,
     top_correlation_pairs: int = 4,
+    interpretation: bool = False,
 ) -> str:
     """Backward-compatible alias for `eigenmode_report`."""
 
@@ -316,6 +355,7 @@ def format_comparison_report(
         precision=precision,
         top_rotation_pairs=top_rotation_pairs,
         top_correlation_pairs=top_correlation_pairs,
+        interpretation=interpretation,
     )
 
 
@@ -368,19 +408,25 @@ def _format_rotation_report(
 
     alignments = top_eigenvector_alignments(comparison, top_n=top_n)
     best_overlaps = np.max(comparison.eigenvector_overlap, axis=1)
-    lines = []
+    lines = [f"- basis = {comparison.rotation_basis}"]
+    if comparison.rotation_basis == "reference_standardized":
+        lines.append("- axes = PCA of D_A^(-1) C_A D_A^(-1) and D_A^(-1) C_B D_A^(-1); these are distinct from the original PCA modes in sections A/B")
+    else:
+        lines.append("- axes = original parameter coordinates; overlaps depend on parameter units")
     for item in alignments:
         lines.append(
             f"- A mode {item.reference_mode_index} <-> B mode {item.alternative_mode_index}: "
             f"|overlap| = {item.overlap:.{precision}g}"
         )
-    lines.append(f"- interpretation = {_rotation_summary(best_overlaps)}")
     degeneracy_note = _rotation_degeneracy_note(
-        comparison.reference_eigenvalues,
-        comparison.alternative_eigenvalues,
+        comparison.rotation_reference_eigenvalues,
+        comparison.rotation_alternative_eigenvalues,
     )
     if degeneracy_note is not None:
+        lines.append("- interpretation = individual-axis rotation is ambiguous in the flagged eigenspaces")
         lines.append(f"- note = {degeneracy_note}")
+    else:
+        lines.append(f"- interpretation = {_rotation_summary(best_overlaps)} (heuristic, in the stated metric)")
     return "\n".join(lines)
 
 
@@ -415,6 +461,7 @@ def _format_shift_report(
             f"- A shifted from B in B units = {shift_a_in_b:.{precision}g}",
             f"- joint shift in combined units = {shift_joint:.{precision}g}",
             f"- interpretation = {_shift_summary(shift_b_in_a, shift_a_in_b, shift_joint)}",
+            "- note = geometric Mahalanobis distances, not Gaussian-sigma tension significances",
         ]
     )
 
@@ -431,9 +478,8 @@ def _format_generalized_report(
     unchanged_tolerance = 0.05
     degradation = comparison.degradation_factors
     sigma_ratios = np.sqrt(np.clip(degradation, 0.0, None))
-    log_rho = np.log(np.clip(degradation, 1e-300, None))
-    alpha_iso = float(np.exp(np.mean(log_rho)))
-    anisotropy = float(np.sqrt(np.mean((log_rho - np.mean(log_rho)) ** 2)))
+    alpha_iso = comparison.alpha
+    anisotropy = comparison.A_aniso
     n_degraded = int(np.sum(degradation > 1.0 + unchanged_tolerance))
     n_improved = int(np.sum(degradation < 1.0 - unchanged_tolerance))
     n_unchanged = int(
@@ -453,11 +499,15 @@ def _format_generalized_report(
         "comparison diagnostics:",
         f"- reference condition number = {comparison.reference_condition_number:.{precision}g}",
         f"- alternative condition number = {comparison.alternative_condition_number:.{precision}g}",
-        f"- interpretation = {_conditioning_summary(comparison.reference_condition_number, comparison.alternative_condition_number)}",
+        "- note = raw condition numbers depend on units; they do not determine statistical reliability",
+        *[f"- {key} = {value:.{precision}g}" for key, value in comparison.numerical_diagnostics.items()],
+        "- interpretation = residuals test the numerical solution; chain convergence and sampling uncertainty require separate checks",
+        *[f"- {key} = {value:.{precision}g}" for key, value in comparison.input_covariance_diagnostics.items()],
         "",
         "isotropic vs anisotropic deformation:",
         f"- alpha = {alpha_iso:.{precision}g}",
         f"- A_aniso = {anisotropy:.{precision}g}",
+        "- convention = alpha is a variance scale; sqrt(alpha) is a linear scale; A_aniso uses natural logs",
         f"- interpretation = {_deformation_summary(alpha_iso, anisotropy)}",
         "",
         "degradation summary:",
@@ -466,8 +516,9 @@ def _format_generalized_report(
         f"- degraded modes (rho > 1.05) = {n_degraded}",
         f"- improved modes (rho < 0.95) = {n_improved}",
         f"- approximately unchanged modes (|rho - 1| <= 0.05) = {n_unchanged}",
-        f"- most degraded mode = {most_degraded + 1} (rho = {degradation[most_degraded]:.{precision}g})",
-        f"- most improved mode = {most_improved + 1} (rho = {degradation[most_improved]:.{precision}g})",
+        f"- largest variance ratio: mode {most_degraded + 1} (rho = {degradation[most_degraded]:.{precision}g})",
+        f"- smallest variance ratio: mode {most_improved + 1} (rho = {degradation[most_improved]:.{precision}g})",
+        "- direction convention = Euclidean-normalized projection coefficients in original units; not parameter importance or ellipsoid displacement axes",
     ]
     for idx in range(comparison.degradation_factors.shape[0]):
         rho = float(comparison.degradation_factors[idx])
@@ -524,33 +575,6 @@ def _deformation_summary(alpha_iso: float, anisotropy: float) -> str:
         aniso_text = "and the deformation is appreciably anisotropic"
 
     return f"{iso_text}, {aniso_text}"
-
-
-def _conditioning_summary(reference_condition: float, alternative_condition: float) -> str:
-    """Summarize numerical conditioning of the two covariance matrices."""
-
-    worst = max(reference_condition, alternative_condition)
-    ratio = (
-        max(reference_condition, alternative_condition)
-        / max(min(reference_condition, alternative_condition), 1.0)
-    )
-
-    if worst < 1e3:
-        base = "both covariance matrices are numerically well conditioned"
-    elif worst < 1e5:
-        base = "the covariance matrices are moderately anisotropic but still reasonably stable"
-    else:
-        base = (
-            "at least one covariance matrix is strongly anisotropic, so the smallest modes "
-            "should be interpreted with extra caution"
-        )
-
-    if ratio > 10.0:
-        return (
-            f"{base}; the two posteriors also differ substantially in conditioning "
-            f"(factor {ratio:.2g})"
-        )
-    return base
 
 
 def _rotation_summary(best_overlaps: np.ndarray) -> str:
@@ -616,18 +640,16 @@ def _shift_summary(shift_b_in_a: float, shift_a_in_b: float, shift_joint: float)
             "in the narrower posterior units"
         )
     if shift_a_in_b > 2.0 * shift_b_in_a:
-        return "the mean separation is modest in A units but large in the tighter B units"
+        return "the separation is larger in B units, indicating a tighter B scale along the displacement"
     if shift_b_in_a > 2.0 * shift_a_in_b:
-        return "the mean separation is modest in B units but large in the tighter A units"
+        return "the separation is larger in A units, indicating a tighter A scale along the displacement"
     return "the posterior means show a non-negligible geometric separation"
 
 
 def _mahalanobis_shift(delta_mean: np.ndarray, covariance: np.ndarray) -> float:
     """Return sqrt(delta^T C^-1 delta) for a positive-definite covariance."""
 
-    solved = np.linalg.solve(covariance, delta_mean)
-    value = float(delta_mean.T @ solved)
-    return float(np.sqrt(max(value, 0.0)))
+    return mahalanobis_shift(delta_mean, covariance)
 
 
 def _format_vector_terms(

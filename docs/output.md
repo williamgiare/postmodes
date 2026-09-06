@@ -2,6 +2,10 @@
 
 This page explains how to read the main quantities reported by `eigenmode_report(...)`.
 
+The default report contains labeled numbers, matrices and parameter combinations.
+Use `eigenmode_report(result, interpretation=True)` to add concise explanations.
+Numerical warnings from invalid or poorly resolved inputs are independent of this setting.
+
 ## Section `A`
 
 This is the PCA decomposition of the reference posterior.
@@ -40,7 +44,11 @@ These are geometric distances, not automatically formal tension significances wh
 
 ## Section `Rotations`
 
-This block reports overlaps between PCA modes of `A` and `B`.
+This block reports overlaps between PCA modes after scaling both covariances by
+the marginal standard deviations of A. It prints `basis = reference_standardized`.
+These mode indices refer to `rotation_reference_eigenvectors` and
+`rotation_alternative_eigenvectors`, not the raw PCA axes in sections A/B.
+`rotation_basis="original"` restores raw-coordinate overlaps.
 
 Interpretation:
 
@@ -48,7 +56,7 @@ Interpretation:
 - overlap near `0`: orthogonal directions,
 - large off-diagonal overlaps: mixing between modes.
 
-The final interpretation line summarizes whether:
+With `interpretation=True`, the final heuristic interpretation summarizes whether:
 
 - the principal bases are almost unchanged,
 - mildly mixed,
@@ -66,17 +74,17 @@ If `C = I`, then `B` has the same covariance geometry as `A` after whitening.
 
 ### Comparison Diagnostics
 
-This section reports the condition numbers of `C_A` and `C_B`.
-
-Interpretation:
-
-- small condition number: numerically stable covariance,
-- large condition number: highly anisotropic covariance,
-- very large condition number: smallest modes should be interpreted with extra caution.
+This section includes raw condition numbers (unit-dependent), correlation-matrix
+condition numbers, a scaled generalized-equation residual, and errors in
+V^T C_A V=I and diagonalization of B. Small residuals verify the numerical solution;
+they do not establish chain convergence. A residual above 1e-7 emits a warning.
+The input checks, if requested, also appear here. Their differences are Frobenius
+norms in supplied-covariance marginal-sigma units, divided by the norm of the
+standardized supplied covariance; the warning threshold is a user-set heuristic.
 
 ### Isotropic vs Anisotropic Deformation
 
-- `alpha`: average isotropic rescaling
+- `alpha`: geometric mean variance rescaling (linear scale is sqrt(alpha))
 - `A_aniso`: anisotropic shape distortion
 
 Interpretation:
@@ -113,6 +121,14 @@ For each mode the report gives:
 - `sigma ratio`
 - interpretation
 - direction in the original parameters
+
+The interpretation line is optional. Direction coefficients use Euclidean
+normalization; sample projections default to reference-unit-variance normalization.
+Both describe the same linear functional up to a constant multiplier.
+
+Scalar access without parsing text: `result.shifts`, `result.alpha`,
+`result.A_aniso`, `result.degradation_factors`, `result.numerical_diagnostics`.
+`result.shifts` is None when means are unavailable.
 
 These are the main scientific output for comparison.
 

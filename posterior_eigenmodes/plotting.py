@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from .api import _coerce_samples
 from .results import CovarianceComparison
 from .stats import select_sample_columns, weighted_mean
 
@@ -15,8 +16,11 @@ def get_mode_samples(
     *,
     parameter_names_a: Sequence[str] | None = None,
     parameter_names_b: Sequence[str] | None = None,
-    center: bool = True,
-    use_normalized_modes: bool = True,
+    center: str | bool = "reference",
+    use_normalized_modes: bool | None = None,
+    normalization: str = "reference",
+    weights_a: np.ndarray | None = None,
+    weights_b: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return all generalized mode coefficients for the two datasets.
 
@@ -24,6 +28,11 @@ def get_mode_samples(
     however the user prefers in the notebook.
     """
 
+    reference_center = comparison.reference_mean
+    if center == "reference" and reference_center is None:
+        matrix, names, weights = _coerce_samples(reference_samples, parameter_names=parameter_names_a)
+        selected, _ = select_sample_columns(matrix, names, comparison.parameter_names)
+        reference_center = weighted_mean(selected, weights_a if weights_a is not None else weights)
     reference_projection = project_samples_onto_modes(
         reference_samples,
         comparison,
@@ -31,6 +40,9 @@ def get_mode_samples(
         parameter_names=parameter_names_a,
         center=center,
         use_normalized_modes=use_normalized_modes,
+        normalization=normalization,
+        reference_center=reference_center,
+        weights=weights_a,
     )
     alternative_projection = project_samples_onto_modes(
         alternative_samples,
@@ -39,6 +51,9 @@ def get_mode_samples(
         parameter_names=parameter_names_b,
         center=center,
         use_normalized_modes=use_normalized_modes,
+        normalization=normalization,
+        reference_center=reference_center,
+        weights=weights_b,
     )
 
     return reference_projection, alternative_projection
@@ -50,18 +65,22 @@ def project_samples_onto_modes(
     *,
     dataset: str = "reference",
     parameter_names: Sequence[str] | None = None,
-    center: bool = True,
-    use_normalized_modes: bool = True,
+    center: str | bool = "reference",
+    use_normalized_modes: bool | None = None,
+    normalization: str = "reference",
+    reference_center: np.ndarray | None = None,
+    weights: np.ndarray | None = None,
 ) -> np.ndarray:
     """Project samples onto the generalized comparison modes.
 
-    The returned array has shape ``(n_samples, n_modes)``. When ``center=True``,
-    each dataset is centered on its own weighted mean before projection.
-    Using the unnormalized comparison modes means the projected variances are
-    directly comparable to the generalized degradation factors.
+    Reference normalization gives V.T C_A V = I. Euclidean normalization
+    rescales columns, preserving variance ratios but not unit variance in A.
+    The default common reference center preserves shifts. ``center='separate'``
+    (legacy True) removes them; ``center='none'`` (legacy False) keeps raw values.
     """
 
-    matrix, names, weights = _coerce_samples(samples, parameter_names=parameter_names)
+    matrix, names, extracted_weights = _coerce_samples(samples, parameter_names=parameter_names)
+    weights = extracted_weights if weights is None else weights
 
     if dataset == "reference":
         requested_names = comparison.parameter_names
@@ -71,20 +90,40 @@ def project_samples_onto_modes(
         raise ValueError("dataset must be either 'reference' or 'alternative'.")
 
     selected, _ = select_sample_columns(matrix, names, requested_names)
-    if center:
+    if center is True:
+        center = "separate"
+    elif center is False:
+        center = "none"
+    if center == "separate":
         selected = selected - weighted_mean(selected, weights)
+    elif center == "reference":
+        origin = comparison.reference_mean if reference_center is None else reference_center
+        if origin is None and dataset == "reference":
+            origin = weighted_mean(selected, weights)
+        if origin is None:
+            raise ValueError("A common reference_center is required when the comparison has no means; get_mode_samples can infer it from A.")
+        origin = np.asarray(origin, dtype=float)
+        if origin.shape != (selected.shape[1],) or not np.all(np.isfinite(origin)):
+            raise ValueError("reference_center must be a finite vector in selected parameter order.")
+        selected = selected - origin
+    elif center != "none":
+        raise ValueError("center must be 'reference', 'separate', or 'none'.")
+
+    if use_normalized_modes is not None:
+        normalization = "euclidean" if use_normalized_modes else "reference"
+    if normalization not in ("reference", "euclidean"):
+        raise ValueError("normalization must be 'reference' or 'euclidean'.")
 
     basis = (
         comparison.normalized_mode_coefficients
-        if use_normalized_modes
+        if normalization == "euclidean"
         else comparison.mode_vectors
     )
     projection = np.einsum("ni,ij->nj", selected, basis, optimize=True)
 
     if not np.all(np.isfinite(projection)):
-        mode_type = "normalized" if use_normalized_modes else "raw"
         raise ValueError(
-            f"Projection onto {mode_type} generalized modes produced non-finite values."
+            f"Projection with {normalization} normalization produced non-finite values."
         )
 
     return projection
@@ -100,6 +139,10 @@ def plot_mode_distributions(
     mode_indices: Sequence[int] = (1,),
     labels: tuple[str, str] = ("reference", "alternative"),
     bins: int = 80,
+    weights_a: np.ndarray | None = None,
+    weights_b: np.ndarray | None = None,
+    center: str | bool = "reference",
+    normalization: str = "reference",
 ):
     """Plot 1D histograms of selected generalized mode coefficients."""
 
@@ -111,8 +154,15 @@ def plot_mode_distributions(
         comparison,
         parameter_names_a=parameter_names_a,
         parameter_names_b=parameter_names_b,
-        use_normalized_modes=True,
+        weights_a=weights_a,
+        weights_b=weights_b,
+        center=center,
+        normalization=normalization,
     )
+    if weights_a is None:
+        weights_a = _coerce_samples(reference_samples, parameter_names=parameter_names_a)[2]
+    if weights_b is None:
+        weights_b = _coerce_samples(alternative_samples, parameter_names=parameter_names_b)[2]
 
     indices = tuple(mode_indices)
     if not indices:
@@ -127,9 +177,11 @@ def plot_mode_distributions(
             raise ValueError(f"Mode index {mode_index} is out of range.")
 
         idx = mode_index - 1
+        edges = np.histogram_bin_edges(np.concatenate([reference_projection[:, idx], alternative_projection[:, idx]]), bins=bins)
         ax.hist(
             reference_projection[:, idx],
-            bins=bins,
+            bins=edges,
+            weights=weights_a,
             density=True,
             histtype="step",
             linewidth=2.0,
@@ -137,7 +189,8 @@ def plot_mode_distributions(
         )
         ax.hist(
             alternative_projection[:, idx],
-            bins=bins,
+            bins=edges,
+            weights=weights_b,
             density=True,
             histtype="step",
             linewidth=2.0,
@@ -162,6 +215,9 @@ def add_mode_derived_parameter(
     dataset: str = "reference",
     name: str | None = None,
     label: str | None = None,
+    center: str | bool = "reference",
+    normalization: str = "reference",
+    reference_center: np.ndarray | None = None,
 ):
     """Return a GetDist sample copy with one generalized mode added as a derived parameter."""
 
@@ -178,7 +234,9 @@ def add_mode_derived_parameter(
         samples,
         comparison,
         dataset=dataset,
-        use_normalized_modes=True,
+        center=center,
+        normalization=normalization,
+        reference_center=reference_center,
     )
 
     derived = samples.copy()
@@ -193,6 +251,9 @@ def add_all_mode_derived_parameters(
     dataset: str = "reference",
     name_prefix: str = "mode_",
     label_prefix: str = "m",
+    center: str | bool = "reference",
+    normalization: str = "reference",
+    reference_center: np.ndarray | None = None,
 ):
     """Return a GetDist sample copy with all generalized modes added as derived parameters."""
 
@@ -205,7 +266,9 @@ def add_all_mode_derived_parameters(
         samples,
         comparison,
         dataset=dataset,
-        use_normalized_modes=True,
+        center=center,
+        normalization=normalization,
+        reference_center=reference_center,
     )
     derived = samples.copy()
     for i in range(projected.shape[1]):
@@ -224,18 +287,28 @@ def plot_mode_1d_getdist(
     *,
     mode_index: int = 1,
     labels: tuple[str, str] = ("reference", "alternative"),
+    center: str | bool = "reference",
+    normalization: str = "reference",
 ):
     """Plot one generalized mode as a derived 1D parameter using GetDist."""
 
     from getdist import plots
 
     derived_name = f"mode_{mode_index}"
+    matrix, names, weights = _coerce_samples(reference_samples)
+    selected, _ = select_sample_columns(matrix, names, comparison.parameter_names)
+    origin = comparison.reference_mean
+    if origin is None:
+        origin = weighted_mean(selected, weights)
     reference_with_mode = add_mode_derived_parameter(
         reference_samples,
         comparison,
         mode_index=mode_index,
         dataset="reference",
         name=derived_name,
+        center=center,
+        normalization=normalization,
+        reference_center=origin,
     )
     alternative_with_mode = add_mode_derived_parameter(
         alternative_samples,
@@ -243,6 +316,9 @@ def plot_mode_1d_getdist(
         mode_index=mode_index,
         dataset="alternative",
         name=derived_name,
+        center=center,
+        normalization=normalization,
+        reference_center=origin,
     )
 
     reference_with_mode.updateSettings({"legend_label": labels[0]})
@@ -251,28 +327,3 @@ def plot_mode_1d_getdist(
     plotter = plots.get_single_plotter()
     plotter.plot_1d([reference_with_mode, alternative_with_mode], derived_name)
     return plotter, reference_with_mode, alternative_with_mode
-
-
-def _coerce_samples(
-    samples: object,
-    *,
-    parameter_names: Sequence[str] | None = None,
-) -> tuple[np.ndarray, tuple[str, ...], np.ndarray | None]:
-    """Convert raw arrays or getdist-like samples into a matrix plus weights."""
-
-    if hasattr(samples, "samples") and hasattr(samples, "getParamNames"):
-        names = tuple(samples.getParamNames().list())
-        matrix = np.asarray(samples.samples, dtype=float)
-        weights = np.asarray(samples.weights, dtype=float)
-        return matrix, names, weights
-
-    matrix = np.asarray(samples, dtype=float)
-    if matrix.ndim != 2:
-        raise ValueError(
-            "Samples must be either a 2D NumPy-like array or a getdist MCSamples object."
-        )
-    if parameter_names is None:
-        raise ValueError(
-            "parameter_names must be provided when samples are passed as raw arrays."
-        )
-    return matrix, tuple(parameter_names), None

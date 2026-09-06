@@ -40,6 +40,20 @@ pip install -e .
 
 ## Example
 
+Two chain roots are enough (30% burn-in by default):
+
+```python
+from posterior_eigenmodes import eigenmodes, eigenmode_report
+
+result = eigenmodes("chains/A", "chains/B")
+print(eigenmode_report(result))
+# Add interpretation=True for concise explanatory notes.
+```
+
+Automatic selection uses exact common non-derived names, including any shared
+nuisance parameters. Check the selected list printed in the report. To select
+physical parameters explicitly or map different names:
+
 ```python
 from posterior_eigenmodes import eigenmodes, eigenmode_report
 
@@ -54,6 +68,18 @@ result = eigenmodes(
 
 print(eigenmode_report(result, precision=4))
 ```
+
+From the terminal, after installation:
+
+```bash
+posterior-eigenmodes chains/A chains/B --params omega_b omega_cdm
+posterior-eigenmodes chains/A chains/B --interpretation
+python -m posterior_eigenmodes --help
+```
+
+Version 0.2 uses rotations in common reference-sigma coordinates and weighted
+mode plots with a common origin. Scalar comparison indicators retain their
+definitions. See [migration notes](docs/migration-0.2.md) for changed defaults.
 
 It supports three usage patterns:
 
