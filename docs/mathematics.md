@@ -77,7 +77,7 @@ cross-covariances. The code does not estimate these or assign tension p-values.
 Version 1.0.0 uses a common dimensionless metric by default. Define
 
 ```math
-D_A=\operatorname{diag}(\sqrt{(C_A)_{ii}}),\qquad
+D_A=\rm{diag}(\sqrt{(C_A)_{ii}}),\qquad
 \widehat C_A=D_A^{-1}C_AD_A^{-1},\qquad
 \widehat C_B=D_A^{-1}C_BD_A^{-1}.
 ```
@@ -228,7 +228,7 @@ These modes are not the PCA modes of `A` or `B` separately. They are the directi
 Precisely, V=C_A^(-1/2)U contains projection coefficients, with
 
 ```math
-V^T C_A V=I,\qquad V^T C_B V=\operatorname{diag}(\rho_i).
+V^T C_A V=I,\qquad V^T C_B V=\rm{diag}(\rho_i).
 ```
 
 Default projections are `(x-mu_A)^T V` for both datasets. A has unit covariance
