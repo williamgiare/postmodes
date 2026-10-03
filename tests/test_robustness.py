@@ -132,3 +132,85 @@ def test_large_weights_and_degenerate_rotation_note():
     report = eigenmode_report(r, interpretation=True)
     assert 'individual-axis rotation is ambiguous' in report
     assert 'basis = reference_standardized' in report
+
+
+@pytest.mark.parametrize('dimension', [2, 4, 10, 20])
+@pytest.mark.parametrize('rotation_basis', ['reference_standardized', 'original'])
+def test_solver_with_strict_floating_point_errors(dimension, rotation_basis):
+    rng = np.random.default_rng(7)
+    x, y = rng.normal(size=(2, dimension, dimension))
+    a = np.einsum('ik,jk->ij', x, x) + np.eye(dimension)
+    b = np.einsum('ik,jk->ij', y, y) + np.eye(dimension)
+    names = [f'p{i}' for i in range(dimension)]
+    delta = rng.normal(size=dimension)
+    expected_rho = eigh(b, a, eigvals_only=True)[::-1]
+
+    with np.errstate(divide='raise', over='raise', invalid='raise'):
+        result = analyze_covariances(
+            a, b, names, reference_mean=np.zeros(dimension),
+            alternative_mean=delta, rotation_basis=rotation_basis,
+        )
+        shifts = result.shifts
+
+    np.testing.assert_allclose(result.degradation_factors, expected_rho, rtol=1e-11)
+    v = result.mode_vectors
+    projected_a = np.einsum('ki,kl,lj->ij', v, a, v, optimize=False)
+    projected_b = np.einsum('ki,kl,lj->ij', v, b, v, optimize=False)
+    np.testing.assert_allclose(projected_a, np.eye(dimension), atol=1e-11)
+    np.testing.assert_allclose(projected_b, np.diag(expected_rho), atol=1e-11)
+    evals, evecs = eigh(a)
+    invsqrt = np.einsum('ik,jk->ij', evecs / np.sqrt(evals), evecs)
+    expected_c = np.einsum('ik,kl,lj->ij', invsqrt, b, invsqrt, optimize=False)
+    np.testing.assert_allclose(result.whitened_comparison_matrix, expected_c, rtol=1e-10, atol=1e-11)
+    expected_shifts = [np.sqrt(delta.dot(np.linalg.solve(c, delta))) for c in (a, b, a + b)]
+    np.testing.assert_allclose(list(shifts.values()), expected_shifts, rtol=1e-11)
+    assert result.alpha == pytest.approx(np.exp(np.mean(np.log(expected_rho))))
+    assert result.A_aniso == pytest.approx(np.std(np.log(expected_rho)))
+    for key in ('generalized_residual', 'reference_orthogonality_error',
+                'alternative_diagonalization_error'):
+        assert result.numerical_diagnostics[key] < 1e-10
+
+
+@pytest.mark.parametrize('normalization', ['reference', 'euclidean'])
+def test_weighted_comparison_and_projection_with_strict_errors(normalization):
+    rng = np.random.default_rng(17)
+    names = [f'p{i}' for i in range(10)]
+    a = rng.normal(size=(800, 10))
+    b = rng.normal(size=(900, 10)) * np.linspace(0.5, 2.0, 10) + 0.3
+    wa = rng.integers(1, 30, len(a)).astype(float)
+    wb = rng.integers(1, 30, len(b)).astype(float)
+
+    with np.errstate(divide='raise', over='raise', invalid='raise'):
+        result = compare_samples(a, b, parameter_names=names, weights_a=wa, weights_b=wb)
+        ma, mb = get_mode_samples(
+            a, b, result, parameter_names_a=names, parameter_names_b=names,
+            weights_a=wa, weights_b=wb, normalization=normalization,
+        )
+        cov_a = weighted_covariance(ma, wa)
+        cov_b = weighted_covariance(mb, wb)
+
+    for samples, weights, actual in (
+        (a, wa, result.reference_covariance), (b, wb, result.alternative_covariance),
+    ):
+        normalized_weights = weights / weights.sum()
+        centered = samples - np.average(samples, axis=0, weights=weights)
+        expected = np.einsum('ni,nj,n->ij', centered, centered, normalized_weights, optimize=False)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.diag(cov_b) / np.diag(cov_a), result.degradation_factors, rtol=1e-11)
+    if normalization == 'reference':
+        np.testing.assert_allclose(cov_a, np.eye(10), atol=1e-11)
+        np.testing.assert_allclose(cov_b, np.diag(result.degradation_factors), atol=1e-11)
+    np.testing.assert_allclose(np.average(ma, axis=0, weights=wa), 0, atol=1e-12)
+    basis = result.mode_vectors if normalization == 'reference' else result.normalized_mode_coefficients
+    expected_mean_b = np.einsum('i,ij->j', result.alternative_mean - result.reference_mean, basis)
+    np.testing.assert_allclose(np.average(mb, axis=0, weights=wb), expected_mean_b, atol=1e-12)
+
+
+def test_real_matrix_product_overflow_is_rejected():
+    from postmodes.numerics import matrix_product
+
+    with np.errstate(divide='raise', over='raise', invalid='raise'):
+        with pytest.raises((ValueError, FloatingPointError)):
+            matrix_product(np.array([[1e308]]), np.array([[2.0]]))
+        with pytest.raises((ValueError, FloatingPointError)):
+            weighted_covariance(np.array([[-1e200], [1e200]]))

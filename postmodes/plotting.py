@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from .api import _coerce_samples
+from .numerics import matrix_product
 from .results import CovarianceComparison
 from .stats import select_sample_columns, weighted_mean
 
@@ -119,7 +120,7 @@ def project_samples_onto_modes(
         if normalization == "euclidean"
         else comparison.mode_vectors
     )
-    projection = np.einsum("ni,ij->nj", selected, basis, optimize=True)
+    projection = matrix_product(selected, basis)
 
     if not np.all(np.isfinite(projection)):
         raise ValueError(

@@ -40,6 +40,15 @@ The validation notebook is useful because it helps distinguish:
 - from numerical or implementation mistakes,
 - from misleading visual intuition based only on 2D projected contours.
 
+## Numerical regressions
+
+Numerical regression tests also run the solver, weighted covariance estimates,
+and mode projections with floating-point exceptions enabled, including 10- and
+20-dimensional inputs. Direct NumPy contractions avoid spurious `matmul` warnings
+from macOS Accelerate. Non-finite products are rejected; warnings are not globally
+suppressed. Results are checked against an independent generalized eigensolver
+and both projected covariance identities.
+
 ## Sampling stability
 
 The optional `bootstrap_stability` utility resamples circular moving blocks

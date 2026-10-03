@@ -4,6 +4,16 @@ import numpy as np
 from scipy.linalg import cholesky, solve_triangular, svd
 
 
+def matrix_product(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+    """Multiply 2D arrays without BLAS and reject non-finite results."""
+    # Optimized contractions can dispatch to Accelerate and report spurious
+    # floating-point exceptions, even when their inputs and outputs are finite.
+    product = np.einsum("ik,kj->ij", left, right, optimize=False)
+    if not np.all(np.isfinite(product)):
+        raise ValueError("Matrix product contains non-finite values.")
+    return product
+
+
 def scaled_spd(matrix, *, floor=1e-14, label="Covariance"):
     """Check positive definiteness in dimensionless correlation coordinates.
 

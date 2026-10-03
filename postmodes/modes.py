@@ -6,7 +6,7 @@ import numpy as np
 from scipy.linalg import cholesky, polar, solve_triangular
 import warnings
 
-from .numerics import covariance_eigensystem, scaled_spd
+from .numerics import covariance_eigensystem, matrix_product, scaled_spd
 
 from .geometry import (
     correlation_matrix,
@@ -131,7 +131,9 @@ def analyze_covariances(
     alt_scales, alt_corr = scaled_spd(alt_matrix, floor=eigenvalue_floor, label="B")
     reference_eigenvalues, reference_eigenvectors = covariance_eigensystem(scales, ref_scaled)
     alternative_eigenvalues, alternative_eigenvectors = covariance_eigensystem(alt_scales, alt_corr)
-    original_overlap = np.clip(np.abs(reference_eigenvectors.T @ alternative_eigenvectors), 0, 1)
+    original_overlap = np.clip(
+        np.abs(matrix_product(reference_eigenvectors.T, alternative_eigenvectors)), 0, 1
+    )
     alt_scaled = alt_matrix / scales[:, None] / scales[None, :]
     if not np.all(np.isfinite(alt_scaled)):
         raise ValueError("Relative covariance scales exceed floating-point range.")
@@ -150,7 +152,7 @@ def analyze_covariances(
     else:
         rot_evals_a, rot_vecs_a = _symmetric_eigensystem(rot_a)
         rot_evals_b, rot_vecs_b = covariance_eigensystem(alt_scales / scales, alt_corr)
-    eigenvector_overlap = np.clip(np.abs(rot_vecs_a.T @ rot_vecs_b), 0, 1)
+    eigenvector_overlap = np.clip(np.abs(matrix_product(rot_vecs_a.T, rot_vecs_b)), 0, 1)
 
     # Solve in dimensionless coordinates; never invert the raw covariance.
     L = cholesky(ref_scaled, lower=True)
@@ -167,15 +169,17 @@ def analyze_covariances(
     # back to the original symmetric-whitening convention for the displayed C.
     W = solve_triangular(L, np.diag(1.0 / scales), lower=True)
     Q, _ = polar(W)
-    whitened_eigenvectors = Q.T @ U_chol
-    whitened_alt = Q.T @ C_chol @ Q
+    whitened_eigenvectors = matrix_product(Q.T, U_chol)
+    whitened_alt = matrix_product(matrix_product(Q.T, C_chol), Q)
     whitened_alt = 0.5 * (whitened_alt + whitened_alt.T)
-    identity_error = np.linalg.norm(V_scaled.T @ ref_scaled @ V_scaled - np.eye(len(names)), ord=2)
-    lhs = alt_scaled @ V_scaled
-    rhs = (ref_scaled @ V_scaled) * degradation_factors
+    reference_projection = matrix_product(matrix_product(V_scaled.T, ref_scaled), V_scaled)
+    identity_error = np.linalg.norm(reference_projection - np.eye(len(names)), ord=2)
+    lhs = matrix_product(alt_scaled, V_scaled)
+    rhs = matrix_product(ref_scaled, V_scaled) * degradation_factors
     residual = np.max(np.linalg.norm(lhs - rhs, axis=0) /
                       (np.linalg.norm(lhs, axis=0) + np.linalg.norm(rhs, axis=0)))
-    b_error = np.linalg.norm((V_scaled.T @ alt_scaled @ V_scaled) /
+    alternative_projection = matrix_product(matrix_product(V_scaled.T, alt_scaled), V_scaled)
+    b_error = np.linalg.norm(alternative_projection /
                             np.sqrt(np.outer(degradation_factors, degradation_factors)) - np.eye(len(names)), ord=2)
     diagnostics = {
         "generalized_residual": float(residual),

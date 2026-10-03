@@ -4,6 +4,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from .numerics import matrix_product
+
 
 def weighted_mean(
     samples: np.ndarray,
@@ -42,12 +44,9 @@ def weighted_covariance(
     normalized_weights = _normalized_weights(matrix.shape[0], weights)
     mean = weighted_mean(matrix, normalized_weights)
     centered = matrix - mean
-    covariance = np.einsum(
-        "ni,nj,n->ij",
-        centered,
-        centered,
-        normalized_weights,
-        optimize=True,
+    covariance = matrix_product(
+        centered.T,
+        centered * normalized_weights[:, None],
     )
     covariance = 0.5 * (covariance + covariance.T)
 
