@@ -79,10 +79,6 @@ postmodes chains/A chains/B --interpretation
 python -m postmodes --help
 ```
 
-Version 1.0.0 uses rotations in common reference-sigma coordinates and weighted
-mode plots with a common origin. Scalar comparison indicators retain their
-definitions. See [migration notes](docs/migration-1.0.md) for changed defaults.
-
 It supports three usage patterns:
 
 1. covariance matrices only
@@ -136,3 +132,33 @@ It supports three usage patterns:
   basic real-data workflow example
 - [4_Advanced_Example.ipynb](notebooks/4_Advanced_Example.ipynb)
   advanced real-data comparison example
+
+## Citation
+
+If you use PostModes in your research, please cite the accompanying paper,
+
+Pedrotti, **Giarè**, Cheng, Di Valentino,
+"When, Why and How CMB compression Fails" -- arXiv:2610.nnnnn.
+
+which presents the methodology and its application to the comparison of full and
+compressed CMB constraints.
+
+<details>
+<summary>BibTeX (provisional)</summary>
+
+```bibtex
+@article{Pedrotti:2026PostModes,
+    author = "Pedrotti, Davide and Giar\`{e}, William and Cheng, Hanyu and Di Valentino, Eleonora",
+    title = "{When, Why and How CMB compression Fails}",
+    eprint = "2610.nnnnn",
+    archivePrefix = "arXiv",
+    year = "2026",
+    note = "Provisional citation: the arXiv identifier and citation key will be updated after publication on arXiv"
+}
+```
+
+</details>
+
+The arXiv identifier and citation key are provisional and will be updated once
+the paper is available on arXiv. The BibTeX entry is also provided in
+[CITATION.bib](CITATION.bib).

@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: >-
+  If you use PostModes in your research, please cite the accompanying paper
+  listed below. Its arXiv identifier is provisional and will be updated once
+  the paper is available on arXiv.
+type: software
+title: PostModes
+version: 1.0.0
+authors:
+  - family-names: "Giarè"
+    given-names: William
+repository-code: "https://github.com/williamgiare/PostModes"
+preferred-citation:
+  type: article
+  title: "When, Why and How CMB compression Fails"
+  authors:
+    - family-names: Pedrotti
+      given-names: Davide
+    - family-names: "Giarè"
+      given-names: William
+    - family-names: Cheng
+      given-names: Hanyu
+    - family-names: Di Valentino
+      given-names: Eleonora
+  year: 2026
+  notes: >-
+    Provisional citation. arXiv:2610.nnnnn is a placeholder, not an assigned
+    identifier. The final arXiv identifier and link will be added after
+    publication on arXiv.
