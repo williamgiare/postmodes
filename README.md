@@ -138,27 +138,27 @@ It supports three usage patterns:
 If you use PostModes in your research, please cite the accompanying paper,
 
 Pedrotti, **Giarè**, Cheng, Di Valentino,
-"When, Why and How CMB compression Fails" -- arXiv:2610.nnnnn.
+"When, Why, and How CMB Compression Fails" -- [arXiv:2610.08728](https://arxiv.org/abs/2610.08728).
 
 which presents the methodology and its application to the comparison of full and
 compressed CMB constraints.
 
 <details>
-<summary>BibTeX (provisional)</summary>
+<summary>BibTeX</summary>
 
 ```bibtex
-@article{Pedrotti:2026PostModes,
-    author = "Pedrotti, Davide and Giar\`{e}, William and Cheng, Hanyu and Di Valentino, Eleonora",
-    title = "{When, Why and How CMB compression Fails}",
-    eprint = "2610.nnnnn",
+@article{Pedrotti:2026ncd,
+    author = "Pedrotti, Davide and Giar{\`e}, William and Cheng, Hanyu and Di Valentino, Eleonora",
+    title = "{When, Why, and How CMB Compression Fails}",
+    eprint = "2610.08728",
     archivePrefix = "arXiv",
-    year = "2026",
-    note = "Provisional citation: the arXiv identifier and citation key will be updated after publication on arXiv"
+    primaryClass = "astro-ph.CO",
+    month = "10",
+    year = "2026"
 }
 ```
 
 </details>
 
-The arXiv identifier and citation key are provisional and will be updated once
-the paper is available on arXiv. The BibTeX entry is also provided in
+The BibTeX entry is also provided in
 [CITATION.bib](CITATION.bib).
